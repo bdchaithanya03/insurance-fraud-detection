@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Insurance Fraud Detection</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/app.css') }}" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg fixed-top border-bottom bg-white">
+  <div class="container-fluid dashboard-width px-4">
+    <a class="navbar-brand fw-semibold text-primary" href="{{ url_for('dashboard') }}"><i class="bi bi-shield-check me-2"></i>Insurance Fraud Detection</a>
+    <span class="navbar-text small text-secondary">Blockchain-backed claim review</span>
+  </div>
+</nav>
+<main class="container-fluid dashboard-width px-4 py-4">
+  {% if error %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-circle me-2"></i>{{ error }}</div>{% endif %}
+  {% if result %}
+    {% if result.ml_result == 'Fraudulent' %}
+      <div class="alert fraud-alert d-flex align-items-center" role="alert"><i class="bi bi-exclamation-triangle-fill fs-4 me-3"></i><div><strong>Potential fraud detected</strong><div>This claim has been flagged as potentially fraudulent.</div><div>Claim amount: {{ result.claim_amount|inr }}. Risk score: {{ result.risk_score }}/100 ({{ result.severity }}){% if result.flagged_reasons %}. Reasons: {{ result.flagged_reasons|join('; ') }}.{% endif %}</div></div></div>
+    {% else %}
+      <div class="alert genuine-alert d-flex align-items-center" role="alert"><i class="bi bi-check-circle-fill fs-4 me-3"></i><div><strong>Genuine claim recorded</strong><div>Claim amount: {{ result.claim_amount|inr }}. {{ result.confidence|round|int }}% confidence{% if result.blockchain_tx_hash %}; blockchain transaction confirmed.{% else %}; awaiting blockchain confirmation.{% endif %}</div></div></div>
+    {% endif %}
+  {% endif %}
+  <div class="page-heading mb-4"><p class="text-secondary mb-1">Operations dashboard</p><h1 class="h3 mb-0">Claim review</h1></div>
+  <section class="row g-3 mb-4" aria-label="Claim statistics">
+    <div class="col-6 col-xl-3"><div class="stat-card"><span class="stat-label">Total claims</span><strong class="stat-value" id="totalClaims">{{ claims|length }}</strong></div></div>
+    <div class="col-6 col-xl-3"><div class="stat-card"><span class="stat-label">Flagged</span><strong class="stat-value text-danger" id="flaggedClaims">{{ claims|selectattr('status', 'equalto', 'Flagged')|list|length }}</strong></div></div>
+    <div class="col-6 col-xl-3"><div class="stat-card"><span class="stat-label">Model accuracy</span><strong class="stat-value text-primary">{% if model_accuracy is not none %}{{ model_accuracy|round|int }}%{% else %}Unavailable{% endif %}</strong></div></div>
+    <div class="col-6 col-xl-3"><div class="stat-card"><span class="stat-label">Blockchain confirmed</span><strong class="stat-value text-success" id="confirmedClaims">{{ claims|selectattr('blockchain_tx_hash')|list|length }}</strong></div></div>
+  </section>
+  <section class="content-section mb-4" aria-labelledby="submit-heading">
+    <div class="section-header"><div><h2 id="submit-heading" class="h5 mb-1">Submit a claim</h2><p class="text-secondary small mb-0">Prediction runs immediately when the claim is submitted.</p></div></div>
+    <form method="post" action="{{ url_for('submit_claim') }}" class="row g-3">
+      <div class="col-md-6 col-xl-4"><label for="claimant_name" class="form-label">Claimant name</label><input class="form-control" id="claimant_name" name="claimant_name" required></div>
+      <div class="col-md-6 col-xl-4"><label for="policy_number" class="form-label">Policy number</label><input class="form-control" id="policy_number" name="policy_number" required></div>
+      <div class="col-md-6 col-xl-4"><label for="incident_type" class="form-label">Incident type</label><select class="form-select" id="incident_type" name="incident_type" required><option value="">Select incident</option>{% for incident in incident_types %}<option>{{ incident }}</option>{% endfor %}</select></div>
+      <div class="col-md-4"><label for="claim_amount" class="form-label">Claim amount</label><div class="input-group"><span class="input-group-text">₹</span><input class="form-control" id="claim_amount" name="claim_amount" type="number" min="1" step="0.01" required></div></div>
+      <div class="col-md-4"><label for="incident_date" class="form-label">Incident date</label><input class="form-control" id="incident_date" name="incident_date" type="date" max="{{ today }}" required></div>
+      <div class="col-md-4"><label for="description" class="form-label">Description</label><textarea class="form-control" id="description" name="description" rows="1" required></textarea></div>
+      <div class="col-12 d-flex justify-content-end"><button class="btn btn-primary px-4" type="submit"><i class="bi bi-arrow-up-right-circle me-2"></i>Analyze claim</button></div>
+    </form>
+  </section>
+  <section class="content-section" aria-labelledby="history-heading">
+    <div class="section-header flex-wrap gap-3"><div><h2 id="history-heading" class="h5 mb-1">Claim history</h2><p class="text-secondary small mb-0">All submitted claims, newest first.</p></div><div class="d-flex gap-2"><select id="statusFilter" class="form-select form-select-sm" aria-label="Filter by status"><option value="">All statuses</option><option>Pending</option><option>Approved</option><option>Rejected</option><option>Flagged</option></select><input id="claimSearch" class="form-control form-control-sm" placeholder="Search policy or claimant" aria-label="Search policy or claimant"></div></div>
+    <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Date</th><th>Claimant</th><th>Policy number</th><th>Amount</th><th>Incident</th><th>ML result</th><th>Confidence</th><th>Status</th><th>Blockchain transaction</th></tr></thead><tbody id="claimsTableBody">{% for claim in claims %}<tr data-status="{{ claim.status }}" data-search="{{ claim.policy_number|lower }} {{ claim.claimant_name|lower }}"><td>{{ claim.incident_date.strftime('%Y-%m-%d') if claim.incident_date.strftime is defined else claim.incident_date }}</td><td class="fw-medium">{{ claim.claimant_name }}</td><td>{{ claim.policy_number }}</td><td>{{ claim.claim_amount|inr }}</td><td>{{ claim.incident_type }}</td><td>{% if claim.ml_result == 'Fraudulent' %}<span class="result-fraud"><i class="bi bi-exclamation-triangle-fill me-1"></i>Fraudulent</span>{% else %}<span class="result-genuine"><i class="bi bi-check-circle-fill me-1"></i>Genuine</span>{% endif %}</td><td>{{ claim.confidence|round|int }}%</td><td><span class="status status-{{ claim.status|lower }}">{{ claim.status }}</span></td><td>{% if claim.blockchain_tx_hash %}<span class="tx-value" title="{{ claim.blockchain_tx_hash }}">{{ claim.blockchain_tx_hash[:10] }}...</span><button type="button" class="btn btn-link btn-sm copy-tx p-0 ms-1" data-tx="{{ claim.blockchain_tx_hash }}" title="Copy transaction hash"><i class="bi bi-copy"></i><span class="visually-hidden">Copy transaction hash</span></button>{% else %}<span class="text-secondary">Not recorded</span>{% endif %}</td></tr>{% else %}<tr id="emptyClaims"><td colspan="9" class="empty-state">No claims submitted yet.</td></tr>{% endfor %}</tbody></table></div>
+  </section>
+</main>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
